@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random!</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+            overflow: hidden;
+        }
+
+        .nav-slider {
+            display: grid;
+            /* Keeps your original 4-column setup */
+            grid-template-columns: 100% 100% 100% 100%;
+            overflow-x: hidden;
+            overflow-y: hidden;
+            scroll-behavior: smooth;
+            width: 100vw;
+        }
+
+        #rand-holder,
+        #power-lab,
+        #action-lab,
+        #data-lab {
+            width: 100vw;
+            height: calc(100vh - 70px);
+            overflow-y: auto;
+        }
+
+        .navigation {
+            display: grid;
+            grid-template-columns: max-content max-content max-content max-content;
+            gap: 20px;
+            background: #eee;
+            padding: 10px;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .nav-item {
+            height: 50px;
+            font-size: 30px;
+            text-decoration: none;
+            color: black;
+            border: 1px solid #ccc;
+            padding: 0 10px;
+            line-height: 50px;
+        }
+
+        .rand-holder,
+        .power-lab,
+        .action-lab,
+        .data-lab {
+            width: 100%;
+            max-width: 1000px;
+            justify-self: center;
+            text-align: center;
+            margin: 0 auto;
+        }
+
+        input,
+        select,
+        button,
+        textarea {
+            width: 100%;
+            font-size: 40px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+
+        textarea {
+            font-size: 16px;
+            height: 300px;
+            font-family: monospace;
+        }
+
+        #action_bonuses, #action_types_list {
+            font-size: 25px;
+            text-align: left;
+            background: #f9f9f9;
+        }
+
+        .power-card {
+            border: 2px solid #333;
+            margin: 10px 0;
+            padding: 10px;
+            background: white;
+            position: relative;
+        }
+
+        #temp-bonus-list {
+            text-align: left;
+            font-size: 20px;
+            margin-bottom: 10px;
+            padding: 5px;
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+        }
+
+        /* RESPONSIVE OVERRIDES: Only kicks in for mobile to prevent overflow */
+        @media (max-width: 600px) {
+            .navigation {
+                gap: 5px;
+                padding: 5px;
+            }
+            .nav-item {
+                font-size: 18px; /* Scales down navigation for small screens */
+                height: 40px;
+                line-height: 40px;
+            }
+            input, select, button, h2 {
+                font-size: 26px !important; /* Scales down the massive inputs */
+            }
+            .power-checkbox {
+                width: 30px !important;
+                height: 30px !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="navigation">
+        <a class="nav-item" href="#rand-holder">Act</a>
+        <a class="nav-item" href="#action-lab">Action Lab</a>
+        <a class="nav-item" href="#power-lab">Power Lab</a>
+        <a class="nav-item" href="#data-lab">Data</a>
+    </div>
+
+    <div class="nav-slider">
+        <div id="rand-holder">
+            <div class="rand-holder">
+                <h2 style="font-size: 40px;">Take Action</h2>
+                <div id="power-checkboxes" style="text-align: left; background: #fff; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; max-height: 200px; overflow-y: auto;">
+                </div>
+                <select id="active-action-type" style="background: #eefbff;"></select>
+                <button onmouseup="act()">Act!</button>
+                <input type="text" class="random-input" readonly placeholder="Result">
+                <input type="text" class="hit-input" readonly placeholder="Status">
+            </div>
+        </div>
+
+        <div id="action-lab">
+            <div class="action-lab">
+                <h2 style="font-size: 40px;">Action Types</h2>
+                <input type="text" id="new_action_type_name" placeholder="New Action Name (e.g. Attack)">
+                <button onclick="saveNewActionType()" style="background: #cce5ff;">Create Action Type</button>
+                <div id="action_types_list"></div>
+            </div>
+        </div>
+
+        <div id="power-lab">
+            <div class="power-lab">
+                <h2 style="font-size: 40px;">New Power</h2>
+                <div class="new-power">
+                    <input type="text" id="new_power_name" placeholder="New Power Name">
+                    <div class="action-type-bonus" style="border: 2px dashed #ccc; padding: 10px;">
+                        <select id="action_type_dropdown"></select>
+                        <input type="number" id="action_bonus" placeholder="Bonus (e.g. 2)">
+                        <button onclick="addToTempList()" style="background: #e2e3e5; font-size: 25px;">+ Add Stat to Power</button>
+                        <div id="temp-bonus-list">Stats to add: None</div>
+                        <button onclick="saveFullPower()" style="background: #d4edda;">Finalize & Save Power</button>
+                    </div>
+                    <div id="action_bonuses"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="data-lab">
+            <div class="data-lab">
+                <h2 style="font-size: 40px;">Data Transfer</h2>
+                <textarea id="json-io-area" placeholder="JSON Data will appear here..."></textarea>
+                <button onclick="importData()" style="background: #fff3cd;">Import from Box</button>
+                <button onclick="exportData()" style="background: #e2e3e5;">Refresh Export</button>
+                <button onclick="clearAllData()" style="background: #ffcccc;">Wipe All Data</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTempBonuses = [];
+
+        function getPowers() {
+            const stored = localStorage.getItem('powers');
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        function getActionTypes() {
+            const stored = localStorage.getItem('actionTypes');
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        function refreshAll() {
+            updateActionTypeDropdowns();
+            updatePowerCheckboxes();
+            displayPowers();
+            displayActionTypes();
+            exportData();
+        }
+
+        function exportData() {
+            const data = {
+                powers: getPowers(),
+                actionTypes: getActionTypes()
+            };
+            document.getElementById('json-io-area').value = JSON.stringify(data, null, 2);
+        }
+
+        function importData() {
+            const raw = document.getElementById('json-io-area').value;
+            if (!raw) return;
+            try {
+                const parsed = JSON.parse(raw);
+                if (parsed.powers && parsed.actionTypes) {
+                    if(confirm("This will overwrite your current powers and actions. Proceed?")) {
+                        localStorage.setItem('powers', JSON.stringify(parsed.powers));
+                        localStorage.setItem('actionTypes', JSON.stringify(parsed.actionTypes));
+                        refreshAll();
+                        alert("Imported successfully!");
+                    }
+                }
+            } catch (e) {
+                alert("Invalid JSON format.");
+            }
+        }
+
+        function saveNewActionType() {
+            const name = document.getElementById('new_action_type_name').value.trim();
+            if (!name) return;
+            let types = getActionTypes();
+            if (!types.includes(name)) {
+                types.push(name);
+                localStorage.setItem('actionTypes', JSON.stringify(types));
+            }
+            document.getElementById('new_action_type_name').value = '';
+            refreshAll();
+        }
+
+        function deleteActionType(index) {
+            if (confirm("Delete this action type? Existing powers with this stat will keep their bonus values.")) {
+                let types = getActionTypes();
+                types.splice(index, 1);
+                localStorage.setItem('actionTypes', JSON.stringify(types));
+                refreshAll();
+            }
+        }
+
+        function displayActionTypes() {
+            const container = document.getElementById('action_types_list');
+            const types = getActionTypes();
+            container.innerHTML = '<h3 style="text-align:center">Available Types</h3>';
+            types.forEach((t, index) => {
+                const card = document.createElement('div');
+                card.className = 'power-card';
+                card.innerHTML = `<strong>${t}</strong>
+                <button onclick="deleteActionType(${index})" style="width: auto; position: absolute; top: 5px; right: 5px; font-size: 16px; background: #ff4444; color: white; border: none; padding: 5px 10px; cursor: pointer;">Delete</button>`;
+                container.appendChild(card);
+            });
+        }
+
+        function updateActionTypeDropdowns() {
+            const types = getActionTypes();
+            const selects = [document.getElementById('active-action-type'), document.getElementById('action_type_dropdown')];
+            selects.forEach(sel => {
+                const currentVal = sel.value;
+                sel.innerHTML = types.map(t => `<option value="${t}">${t}</option>`).join('');
+                if (types.includes(currentVal)) sel.value = currentVal;
+            });
+        }
+
+        function addToTempList() {
+            const type = document.getElementById('action_type_dropdown').value;
+            const bonus = parseInt(document.getElementById('action_bonus').value);
+            if (isNaN(bonus)) { alert("Enter a numeric bonus!"); return; }
+            currentTempBonuses.push({ type: type, bonus: bonus });
+            updateTempDisplay();
+            document.getElementById('action_bonus').value = '';
+        }
+
+        function updateTempDisplay() {
+            const display = document.getElementById('temp-bonus-list');
+            display.innerText = currentTempBonuses.length === 0 ? "Stats to add: None" : 
+                "Stats to add: " + currentTempBonuses.map(b => `${b.type} +${b.bonus}`).join(', ');
+        }
+
+        function saveFullPower() {
+            const name = document.getElementById('new_power_name').value.trim();
+            if (!name || currentTempBonuses.length === 0) { alert("Enter a name and add a stat!"); return; }
+            let powers = getPowers();
+            powers.push({ name: name, bonuses: currentTempBonuses });
+            localStorage.setItem('powers', JSON.stringify(powers));
+            document.getElementById('new_power_name').value = '';
+            currentTempBonuses = [];
+            updateTempDisplay();
+            refreshAll();
+        }
+
+        function displayPowers() {
+            const container = document.getElementById('action_bonuses');
+            const powers = getPowers();
+            container.innerHTML = '<h3 style="text-align:center">Stored Powers</h3>';
+            powers.forEach((p, index) => {
+                const card = document.createElement('div');
+                card.className = 'power-card';
+                let bonusHTML = p.bonuses.map(b => `<div>${b.type}: +${b.bonus}</div>`).join('');
+                card.innerHTML = `<strong>${p.name}</strong>
+                <button onclick="deletePower(${index})" style="width: auto; position: absolute; top: 5px; right: 5px; font-size: 16px; background: #ff4444; color: white; border: none; padding: 5px 10px; cursor: pointer;">Delete</button>
+                <hr>${bonusHTML}`;
+                container.appendChild(card);
+            });
+        }
+
+        function deletePower(index) {
+            if (confirm("Delete this power?")) {
+                let powers = getPowers();
+                powers.splice(index, 1);
+                localStorage.setItem('powers', JSON.stringify(powers));
+                refreshAll();
+            }
+        }
+
+        function updatePowerCheckboxes() {
+            const container = document.getElementById('power-checkboxes');
+            const powers = getPowers();
+            container.innerHTML = powers.length ? '' : '<div style="font-size: 20px; color: #666;">No powers created yet.</div>';
+            powers.forEach((p, index) => {
+                const div = document.createElement('div');
+                div.style.marginBottom = "5px";
+                div.innerHTML = `<label style="font-size: 24px; display: block; cursor: pointer;">
+                    <input type="checkbox" class="power-checkbox" value="${index}" style="width: 25px; height: 25px; vertical-align: middle;"> ${p.name}
+                </label>`;
+                container.appendChild(div);
+            });
+        }
+
+        function act() {
+            const checkboxes = document.querySelectorAll('.power-checkbox:checked');
+            const activeType = document.getElementById('active-action-type').value;
+            const powers = getPowers();
+            let totalBonus = 0;
+
+            checkboxes.forEach(cb => {
+                const p = powers[cb.value];
+                totalBonus += p.bonuses.filter(b => b.type === activeType).reduce((sum, b) => sum + b.bonus, 0);
+            });
+
+            const d1 = Math.floor(Math.random() * 6) + 1;
+            const d2 = Math.floor(Math.random() * 6) + 1;
+            const total = d1 + d2 + totalBonus;
+
+            document.querySelector('.random-input').value = `Acting: ${activeType}...`;
+            setTimeout(() => {
+                document.querySelector('.random-input').value = `${d1}+${d2} + [Bonus: ${totalBonus}] = ${total}`;
+                document.querySelector('.hit-input').value = total >= 7 ? 'Hit!' : 'Miss!';
+            }, 300);
+        }
+
+        refreshAll();
+
+        function clearAllData() {
+            if(confirm("Are you sure? This will delete EVERYTHING.")) {
+                localStorage.clear();
+                refreshAll();
+            }
+        }
+    </script>
+</body>
+</html>
